@@ -1,7 +1,9 @@
 import os
 import json
+from platform import processor
 import torch
 import torch.nn as nn
+import torch_directml
 import torch.optim as optim
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, random_split
@@ -15,8 +17,8 @@ from src.train   import train_one_epoch, evaluate
 DATA_PATH   = 'data/SportU_Video_mc.json'
 VIDEO_DIR   = 'videos/Soccer'
 OUTPUT_DIR  = 'outputs'
-BATCH_SIZE  = 4
-NUM_EPOCHS  = 5
+BATCH_SIZE  = 16
+NUM_EPOCHS  = 20
 LR          = 1e-4
 FEATURE_DIM = 256
 NUM_FRAMES  = 8
@@ -26,8 +28,8 @@ def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # Device
-    device = torch.device('cpu')
-    print(f"Using device: {device}")
+    device = torch_directml.device()
+    print(f"✅ Using Arc B580 GPU via DirectML!")
     
     # Load data
     with open(DATA_PATH) as f:
@@ -41,7 +43,7 @@ def main():
     # Dataset
     full_dataset = SPORTUDataset(
         data       = data,
-        video_dir  = VIDEO_DIR,
+        frames_dir = 'data/frames',   # pre-extracted frames
         processor  = processor,
         num_frames = NUM_FRAMES
     )
