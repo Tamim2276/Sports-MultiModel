@@ -116,7 +116,7 @@ def extract_and_save_frames(
     with open(index_path, 'w') as f:
         json.dump(processed, f)
     
-    print(f"\n✅ Done!")
+    print(f"\n Done!")
     print(f"  Processed: {len(processed)} videos")
     print(f"  Failed:    {len(failed)} videos")
     print(f"  Index saved to: {index_path}")
