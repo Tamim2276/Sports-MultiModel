@@ -84,6 +84,7 @@ def extract_and_save_frames(
             0, total - 1, num_frames, dtype=int
         )
         
+        # frames to grab, extracting them, shrinking them, and saving them to pc
         frame_paths = []
         success = True
         
