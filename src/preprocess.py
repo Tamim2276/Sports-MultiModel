@@ -3,8 +3,6 @@ preprocess.py
 Extract frames from all videos ONCE and save as images.
 Run this once before training — never again.
 
-Before: training reads video files every batch (slow)
-After:  training reads pre-saved images (fast)
 """
 
 import os
@@ -19,14 +17,6 @@ def extract_and_save_frames(
     json_path,
     num_frames=8
 ):
-    """
-    For each video in the dataset:
-    1. Read the video file
-    2. Extract 8 evenly spaced frames
-    3. Save each frame as a .jpg file
-    4. Create an index file mapping video_id to frame paths
-    """
-    
     os.makedirs(output_dir, exist_ok=True)
     
     # Load dataset to know which videos we need
@@ -86,7 +76,6 @@ def extract_and_save_frames(
         
         # frames to grab, extracting them, shrinking them, and saving them to pc
         frame_paths = []
-        success = True
         
         for i, idx in enumerate(indices):
             cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
@@ -109,8 +98,7 @@ def extract_and_save_frames(
         
         cap.release()
         
-        if success:
-            processed[video_id] = frame_paths
+        processed[video_id] = frame_paths
     
     # Save index file
     index_path = os.path.join(output_dir, 'frame_index.json')
