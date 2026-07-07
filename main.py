@@ -116,7 +116,7 @@ def main():
     train_losses, val_losses = [], []
     train_accs,   val_accs   = [], []
     best_val_acc             = 0.0
-    patience                 = 5    # stop if no improvement for 5 epochs
+    patience                 = 15    # stop if no improvement for 5 epochs
     patience_count           = 0
 
     print("\n" + "=" * 40)
