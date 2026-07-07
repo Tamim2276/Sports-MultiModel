@@ -37,8 +37,8 @@ class VideoEncoder(nn.Module):
         for param in self.vit.parameters():
             param.requires_grad = False
 
-        # Unfreeze last 4 layers + layernorm
-        for param in self.vit.encoder.layer[-4:].parameters():
+        # Unfreeze last 6 layers + layernorm
+        for param in self.vit.encoder.layer[-6:].parameters():
             param.requires_grad = True
         for param in self.vit.layernorm.parameters():
             param.requires_grad = True
@@ -57,14 +57,14 @@ class VideoEncoder(nn.Module):
         # Frozen layers — no gradients, saves memory
         with torch.no_grad():
             hidden = self.vit.embeddings(frames)
-            for layer in self.vit.encoder.layer[:-4]:
+            for layer in self.vit.encoder.layer[:-6]:
                 hidden = layer(hidden)[0]
 
         # Detach so frozen layers don't accumulate grad history
         hidden = hidden.detach()
 
-        # Unfrozen last 4 layers — gradients flow here
-        for layer in self.vit.encoder.layer[-4:]:
+        # Unfrozen last 6 layers — gradients flow here
+        for layer in self.vit.encoder.layer[-6:]:
             hidden = layer(hidden)[0]
 
         hidden = self.vit.layernorm(hidden)
@@ -103,8 +103,8 @@ class TextEncoder(nn.Module):
         for param in self.roberta.parameters():
             param.requires_grad = False
 
-        # Unfreeze last 4 layers
-        for param in self.roberta.encoder.layer[-4:].parameters():
+        # Unfreeze last 6 layers
+        for param in self.roberta.encoder.layer[-6:].parameters():
             param.requires_grad = True
 
     def forward(self, input_ids, attention_mask):
@@ -120,14 +120,14 @@ class TextEncoder(nn.Module):
             extended_mask = self.roberta.get_extended_attention_mask(
                 mask, ids.shape
             )
-            for layer in self.roberta.encoder.layer[:-4]:
+            for layer in self.roberta.encoder.layer[:-6]:
                 hidden = layer(hidden, extended_mask)[0]
 
         # Detach so frozen layers don't accumulate grad history
         hidden = hidden.detach()
 
-        # Unfrozen last 4 layers — gradients flow here
-        for layer in self.roberta.encoder.layer[-4:]:
+        # Unfrozen last 6 layers — gradients flow here
+        for layer in self.roberta.encoder.layer[-6:]:
             hidden = layer(hidden, extended_mask)[0]
 
         # CLS token: [B*N, 768]
@@ -204,8 +204,16 @@ class AttentiveFusion(nn.Module):
 
 
 class SportsMultimodalModel(nn.Module):
+    """
+    Full model
 
-    def __init__(self, feature_dim=768, dropout=0.2):
+    ViT     -> visual features from video frames
+    RoBERTa -> text features from question + options
+    Attentive Fusion -> cross-modal attention
+    Classifier -> score each of 4 answer options
+    """
+
+    def __init__(self, feature_dim=768, dropout=0.4):
         super().__init__()
 
         self.video_encoder = VideoEncoder(output_dim=feature_dim)
@@ -215,6 +223,7 @@ class SportsMultimodalModel(nn.Module):
         # Classifier
         # Input: feature_dim * 3 (from AttentiveFusion output)
         # Output: 1 score per option
+        # dropout=0.4 to combat overfitting (was 0.2)
         self.classifier = nn.Sequential(
             nn.Linear(feature_dim * 3, 512),
             nn.LeakyReLU(0.1),

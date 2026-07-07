@@ -36,7 +36,7 @@ def main():
     # Processor — must match roberta-base used in TextEncoder
     processor = RobertaTokenizer.from_pretrained('roberta-base')
 
-    # Dataset — eval transform (no augmentation) for val/test
+    # Eval dataset instance — no augmentation, used for val and test
     full_dataset_eval = SPORTUDataset(
         data       = data,
         frames_dir = 'data/frames',
@@ -56,7 +56,7 @@ def main():
     val_indices   = indices[n_train:n_train + n_val]
     test_indices  = indices[n_train + n_val:]
 
-    # Separate dataset instance for train with augmentation
+    # Train dataset instance — with augmentation
     full_dataset_train = SPORTUDataset(
         data       = data,
         frames_dir = 'data/frames',
@@ -89,19 +89,21 @@ def main():
     criterion = nn.CrossEntropyLoss()
 
     # Differential learning rates:
-    # Pretrained backbone layers get a small LR to preserve learned weights.
-    # Projection, fusion, and classifier train from scratch so they get a higher LR.
-    optimizer = optim.Adam([
-        {'params': model.video_encoder.vit.encoder.layer[-4:].parameters(),      'lr': 1e-5},
-        {'params': model.text_encoder.roberta.encoder.layer[-4:].parameters(),   'lr': 1e-5},
-        {'params': model.video_encoder.projection.parameters(),                   'lr': 1e-4},
-        {'params': model.text_encoder.projection.parameters(),                    'lr': 1e-4},
-        {'params': model.fusion.parameters(),                                      'lr': 1e-4},
-        {'params': model.classifier.parameters(),                                  'lr': 1e-4},
+    # Pretrained backbone layers small LR to preserve learned weights
+    # Projection, fusion, classifier higher LR, training from scratch
+    # weight_decay added to all groups to penalize large weights (reduces overfitting)
+    optimizer = optim.AdamW([
+        {'params': model.video_encoder.vit.encoder.layer[-6:].parameters(),    'lr': 1e-5, 'weight_decay': 1e-4},
+        {'params': model.text_encoder.roberta.encoder.layer[-6:].parameters(), 'lr': 1e-5, 'weight_decay': 1e-4},
+        {'params': model.video_encoder.projection.parameters(),                 'lr': 1e-4, 'weight_decay': 1e-4},
+        {'params': model.text_encoder.projection.parameters(),                  'lr': 1e-4, 'weight_decay': 1e-4},
+        {'params': model.fusion.parameters(),                                    'lr': 1e-4, 'weight_decay': 1e-4},
+        {'params': model.classifier.parameters(),                                'lr': 1e-4, 'weight_decay': 1e-4},
     ])
 
+    # Tighter scheduler — reacts faster to val loss plateau
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, patience=2, factor=0.5
+        optimizer, patience=1, factor=0.3   # was patience=2, factor=0.5
     )
 
     trainable = sum(
@@ -114,6 +116,8 @@ def main():
     train_losses, val_losses = [], []
     train_accs,   val_accs   = [], []
     best_val_acc             = 0.0
+    patience                 = 5    # stop if no improvement for 5 epochs
+    patience_count           = 0
 
     print("\n" + "=" * 40)
     print("Starting Training")
@@ -139,20 +143,29 @@ def main():
         print(f"  Train Loss: {tr_loss:.4f}  Acc: {tr_acc:.2f}%")
         print(f"  Val   Loss: {vl_loss:.4f}  Acc: {vl_acc:.2f}%")
 
+        # Save best model and track early stopping patience
         if vl_acc > best_val_acc:
-            best_val_acc = vl_acc
+            best_val_acc   = vl_acc
+            patience_count = 0
             torch.save(
                 model.state_dict(),
                 os.path.join(OUTPUT_DIR, 'best_model.pth')
             )
-            print(f" Best model saved!")
+            print(f"  ✅ Best model saved!")
+        else:
+            patience_count += 1
+            print(f"  No improvement. Patience: {patience_count}/{patience}")
+            if patience_count >= patience:
+                print(f"\n⛔ Early stopping triggered at epoch {epoch + 1}")
+                break
 
-    # Test
+    # Test — load best checkpoint
     print("\n" + "=" * 40)
     model.load_state_dict(
         torch.load(
             os.path.join(OUTPUT_DIR, 'best_model.pth'),
-            weights_only=True
+            map_location='cpu',
+            weights_only=False
         )
     )
     ts_loss, ts_acc, _, _ = evaluate(
@@ -161,18 +174,18 @@ def main():
     print(f"Test Accuracy: {ts_acc:.2f}%")
 
     # Plot
-    epochs = range(1, NUM_EPOCHS + 1)
+    epochs_ran = range(1, len(train_losses) + 1)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 
-    ax1.plot(epochs, train_losses, 'b-o', label='Train')
-    ax1.plot(epochs, val_losses,   'r-o', label='Val')
+    ax1.plot(epochs_ran, train_losses, 'b-o', label='Train')
+    ax1.plot(epochs_ran, val_losses,   'r-o', label='Val')
     ax1.set_title('Loss')
     ax1.set_xlabel('Epoch')
     ax1.legend()
     ax1.grid(True)
 
-    ax2.plot(epochs, train_accs, 'b-o', label='Train')
-    ax2.plot(epochs, val_accs,   'r-o', label='Val')
+    ax2.plot(epochs_ran, train_accs, 'b-o', label='Train')
+    ax2.plot(epochs_ran, val_accs,   'r-o', label='Val')
     ax2.set_title('Accuracy (%)')
     ax2.set_xlabel('Epoch')
     ax2.legend()
@@ -188,10 +201,10 @@ def main():
             'best_val_accuracy': best_val_acc,
             'test_accuracy'    : ts_acc,
             'total_examples'   : total,
-            'epochs_trained'   : NUM_EPOCHS
+            'epochs_trained'   : len(train_losses)
         }, f, indent=2)
 
-    print("\n Complete!")
+    print("\n✅ Complete!")
     print(f"Best Val Acc:  {best_val_acc:.2f}%")
     print(f"Test Accuracy: {ts_acc:.2f}%")
     print("Results saved to outputs/")
