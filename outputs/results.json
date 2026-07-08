@@ -1,6 +1,6 @@
 {
-  "best_val_accuracy": 61.34453781512605,
-  "test_accuracy": 63.25503355704698,
+  "best_val_accuracy": 63.69747899159663,
+  "test_accuracy": 67.28187919463086,
   "total_examples": 3969,
-  "epochs_trained": 6
+  "epochs_trained": 20
 }

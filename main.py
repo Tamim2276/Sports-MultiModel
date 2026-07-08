@@ -7,7 +7,7 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, Subset
 from transformers import RobertaTokenizer
-
+from torch.optim.lr_scheduler import OneCycleLR
 from src.dataset import SPORTUDataset, TRAIN_TRANSFORM, EVAL_TRANSFORM
 from src.model   import SportsMultimodalModel
 from src.train   import train_one_epoch, evaluate
@@ -86,7 +86,8 @@ def main():
 
     # Model
     model     = SportsMultimodalModel(FEATURE_DIM).to(device)
-    criterion = nn.CrossEntropyLoss()
+    # Label smoothing in the loss
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1) 
 
     # Differential learning rates:
     # Pretrained backbone layers small LR to preserve learned weights
@@ -101,9 +102,13 @@ def main():
         {'params': model.classifier.parameters(),                                'lr': 1e-4, 'weight_decay': 1e-4},
     ])
 
-    # Tighter scheduler — reacts faster to val loss plateau
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, patience=1, factor=0.3   # was patience=2, factor=0.5
+    #scheduler
+    scheduler = OneCycleLR(
+        optimizer,
+        max_lr          = [1e-5, 1e-5, 1e-4, 1e-4, 1e-4, 1e-4],
+        steps_per_epoch = len(train_loader),
+        epochs          = NUM_EPOCHS,
+        pct_start       = 0.1
     )
 
     trainable = sum(
@@ -127,13 +132,11 @@ def main():
         print(f"\nEpoch {epoch + 1}/{NUM_EPOCHS}")
 
         tr_loss, tr_acc = train_one_epoch(
-            model, train_loader, optimizer, criterion, device
+            model, train_loader, optimizer, criterion, device, scheduler
         )
         vl_loss, vl_acc, _, _ = evaluate(
             model, val_loader, criterion, device
         )
-
-        scheduler.step(vl_loss)
 
         train_losses.append(tr_loss)
         val_losses.append(vl_loss)
